@@ -4,10 +4,7 @@ import kotlinx.coroutines.*
 import java.io.File
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
-import java.nio.channels.Channels
-import java.nio.channels.FileChannel
-import java.nio.channels.ServerSocketChannel
-import java.nio.channels.SocketChannel
+import java.nio.channels.*
 import java.nio.file.StandardOpenOption
 import kotlin.io.path.Path
 import kotlin.system.exitProcess
@@ -39,9 +36,8 @@ class SingleInstance(
         // Acquire an exclusive lock, which will be auto-released by the OS on process death.
         // Lock protects the domain socket
         val lockPath = "$socketPath.lock"
-        FileChannel.open(Path(lockPath), StandardOpenOption.WRITE, StandardOpenOption.CREATE)
+        lock = FileChannel.open(Path(lockPath), StandardOpenOption.WRITE, StandardOpenOption.CREATE)
             .tryLock() ?: return null
-
 
         // Lock acquired, no other instances are running. Safe to clean up existing socket to allow for bind.
         File(socketPath).delete()
@@ -50,12 +46,14 @@ class SingleInstance(
             bind(UnixDomainSocketAddress.of(socketPath))
         }
     }
+    // Keep a reference to the lock, which prevents the channel from being auto-closed (which would release the lock)
+    private var lock: FileLock? = null
 
     private fun dial(args: Array<String>) {
         writeArgs(SocketChannel.open(UnixDomainSocketAddress.of(socketPath)), args)
     }
 
-    private fun accept(listener: ServerSocketChannel, onArgsReceived: (Array<String>) -> Unit) {
+    private fun accept(listener: ServerSocketChannel, onArgsReceived: suspend (Array<String>) -> Unit) {
         while (true) {
             listener.accept().let { channel ->
                 // Use a separate coroutine so that a misbehaving peer can't DOS others.
