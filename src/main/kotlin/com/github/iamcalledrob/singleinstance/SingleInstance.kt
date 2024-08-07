@@ -14,7 +14,7 @@ class SingleInstance(
     private val onExit: () -> Unit = { exitProcess(0) },
 ) {
 
-    fun args(args: Array<String>, onArgsReceived: (Array<String>) -> Unit) {
+    fun args(args: Array<String>, onArgsReceived: suspend (Array<String>) -> Unit) {
         // There is a race condition here, where another instance holds the lock, but terminates before dial
         // is able to complete successfully.
         //
