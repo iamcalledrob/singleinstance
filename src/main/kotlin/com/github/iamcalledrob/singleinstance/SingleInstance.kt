@@ -15,6 +15,10 @@ class SingleInstance(
 ) {
 
     fun args(args: Array<String>, onArgsReceived: suspend (Array<String>) -> Unit) {
+        // Ensure the parent folder of `socketPath` exists, otherwise attempts to write the lock (and sock)
+        // wil throw. Prevents a crash-at-launch-but-not-on-dev-machine issue.
+        File(socketPath).parentFile.mkdirs()
+
         // There is a race condition here, where another instance holds the lock, but terminates before dial
         // is able to complete successfully.
         //
@@ -105,6 +109,11 @@ class SingleInstance(
 }
 
 /** Provides a socket path in the temp dir for the provided identifier.
- *  Identifier must not contain characters which are unsuitable for a file name. */
+ *  Identifier must not contain characters which are unsuitable for a file name.
+ *
+ *  Note: no guarantee is made that the result will be short enough to satisfy UNIX_PATH_MAX.
+ *  This can be a problem for packaged Windows MSIX apps, which may use a very long virtualized java.io.tmpdir path.
+ *  A future version may improve handling or provide error checking here.
+ **/
 fun socketPath(identifier: String): String =
     System.getProperty("java.io.tmpdir") + File.separator + identifier + ".sock"
