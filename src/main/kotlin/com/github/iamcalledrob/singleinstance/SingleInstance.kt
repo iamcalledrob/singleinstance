@@ -78,10 +78,10 @@ class SingleInstance(
 
     private fun writeArgs(channel: SocketChannel, args: Array<String>) {
         Channels.newOutputStream(channel).use { stream ->
-            stream.write(args.size)
+            stream.writeInt(args.size)
             for (arg in args) {
                 val bytes = arg.toByteArray(Charsets.UTF_8)
-                stream.write(bytes.size)
+                stream.writeInt(bytes.size)
                 stream.write(bytes)
             }
         }
@@ -90,14 +90,14 @@ class SingleInstance(
     private fun readArgs(channel: SocketChannel): Array<String> {
         Channels.newInputStream(channel).use { stream ->
             val rcvdArgs = mutableListOf<String>()
-            val count = stream.readNBytes(1).first().toInt()
+            val count = stream.readInt()
 
             // Sanity check
-            check(count <= 1024) { "arg count out of range: $count" }
+            check(count in 0..1024) { "arg count out of range: $count" }
 
             repeat(count) {
-                val len = stream.readNBytes(1).first().toInt()
-                check(len <= 1024) { "arg len out of range: $len" }
+                val len = stream.readInt()
+                check(len in 1..1024) { "arg len out of range: $len" }
 
                 val arg = stream.readNBytes(len).toString(Charsets.UTF_8)
                 rcvdArgs.add(arg)
