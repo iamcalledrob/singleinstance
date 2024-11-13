@@ -17,7 +17,7 @@ repositories {
 Then add as a module dependency:
 ```kotlin
 dependencies {
-    implementation("com.github.iamcalledrob:singleinstance:1.0.2")
+    implementation("com.github.iamcalledrob:singleinstance:1.0.3")
 }
 ```
 
