@@ -24,37 +24,45 @@ class SingleInstance(
         //
         // This is intentionally unhandled because this situation could happen even if dial succeeds -- the dial
         // could succeed just *before* the other instance terminates.
-        tryListen()?.let { listener ->
+        try {
+            // Throws AlreadyLockedException if lock can't be acquired
+            val listener = tryListen()
+
             // Listening, accept incoming dials indefinitely
             CoroutineScope(Dispatchers.IO).launch {
                 accept(listener, onArgsReceived)
             }
-        } ?: run {
+
+        } catch (e: AlreadyLockedException) {
             // Another instance is listening, dial and send args
             dial(args)
             onExit()
         }
     }
 
-    private fun tryListen(): ServerSocketChannel? {
+    private fun tryListen(): ServerSocketChannel {
         // Acquire an exclusive lock, which will be auto-released by the OS on process death.
         // Lock protects the domain socket
         val lockPath = "$socketPath.lock"
-        lock = FileChannel.open(Path(lockPath), StandardOpenOption.WRITE, StandardOpenOption.CREATE)
-            .tryLock() ?: return null
+        val fileChannel = FileChannel.open(Path(lockPath), StandardOpenOption.WRITE, StandardOpenOption.CREATE)
+        lock = fileChannel.tryLock() ?: throw AlreadyLockedException(lockPath)
 
         // Lock acquired, no other instances are running. Safe to clean up existing socket to allow for bind.
         File(socketPath).delete()
 
-        return ServerSocketChannel.open(StandardProtocolFamily.UNIX).apply {
-            bind(UnixDomainSocketAddress.of(socketPath))
-        }
+        val channel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
+        val address = UnixDomainSocketAddress.of(socketPath)
+        channel.bind(address)
+
+        return channel
     }
     // Keep a reference to the lock, which prevents the channel from being auto-closed (which would release the lock)
     private var lock: FileLock? = null
 
     private fun dial(args: Array<String>) {
-        writeArgs(SocketChannel.open(UnixDomainSocketAddress.of(socketPath)), args)
+        val address = UnixDomainSocketAddress.of(socketPath)
+        val channel = SocketChannel.open(address)
+        writeArgs(channel, args)
     }
 
     private fun accept(listener: ServerSocketChannel, onArgsReceived: suspend (Array<String>) -> Unit) {
@@ -107,6 +115,8 @@ class SingleInstance(
         }
     }
 }
+
+internal class AlreadyLockedException(path: String) : Exception("$path already locked")
 
 /** Provides a socket path in the temp dir for the provided identifier.
  *  Identifier must not contain characters which are unsuitable for a file name.
